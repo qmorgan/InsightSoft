@@ -11,18 +11,54 @@ import pandas as pd
 import glob
 import time
 import numpy as np
-
+import requests
 # 
 
-def _CNSession():
+def _CNScrapeOther(CNdf,baselist=['history','history.detail'],idrange=(6,15),pause=0.5):
+    '''This could actually be used to scrape summary as well but it was written
+    later. Incorporate the _CNScrapeSummary into this if desired.'''
+    
     import qMail
-    emailaddr=qMail.gmail_username+'@gmail.com'
-    payload={'email':emailaddr,'password':qMail.gmail_password}
+    
+
+    
+    acceptablebases = ['summary','history','history.detail','comments']
+    subdf = CNdf.loc[idrange[0]:idrange[1]]
+    
+    # emailaddr=qMail.gmail_username+'@gmail.com'
+    emailaddr="qmorgan@gmail.com"
+    payload={'email':emailaddr,'password':'r0b0b00gie'}
     session = requests.session()
     r=session.get('https://www.charitynavigator.org/index.cfm?bay=my.login', params=payload)
-    # r=session.get('http://www.charitynavigator.org/index.cfm?bay=search.history&orgid=7958#.U5AJ35Tqa60')
+    print "Pausing to log in"
+    time.sleep(3)
+    # loop around bases
+    for base in baselist:
+        if base not in acceptablebases:
+            print "Need to specify base: ['summary','history','comments']"
+            continue
+        # loop around range
+        for dfid, CNitem in subdf.iterrows():
+            try:
+                orgid=int(CNitem.CNid)
+                downloadpath = basepath + 'CharityNavigator/raw/{}/{}{}.html'.format(base,base,orgid)
+                if base == 'history.detail': 
+                    downloadpath = downloadpath.replace('html','pdf') # this is a pdf file
+                urlstr = 'http://www.charitynavigator.org/index.cfm?bay=search.{}&orgid={}'.format(base,orgid)
+                r=session.get(urlstr)
+                localfile = open(downloadpath,'wb')
+                localfile.write(r.content)
+                localfile.close()
+                print "Wrote id {}: {}".format(dfid,downloadpath)
+                timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
+                time.sleep(timetopause)
+            except:
+                errtext='Couldnt scrape dfid:{} (CNid:{})'.format(dfid,orgid)
+                qErr.qErr(errtitle="A scraping error has occured!",errtext=errtext)
     # r.content
     r.close()
+    
+    time.sleep(timetopause)
     # 
     # local_file = open('test.pdf', "w" + 'b')
     # 
