@@ -53,4 +53,4 @@ def qErr(mail=True,mail_to='qmorgan@gmail.com',errtitle="An error has occured!",
         
         operation = "tail -n 20 %s > %s" % (errfilepath, errfilemailpath)
         os.system(operation) 
-        send_gmail.domail(mail_to,err_mail_sub,err_mail_text,[errfilemailpath])
+        qMail.domail(mail_to,err_mail_sub,err_mail_text,[errfilemailpath])
