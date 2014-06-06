@@ -14,13 +14,36 @@ import numpy as np
 import requests
 # 
 
+# Hardcode this base path for now.
+basepath = "/Users/amorgan/Documents/Insight/"
+
+
+
+def _BBBLoop(idrange=(1,5)):
+    # last bbb id is 40196
+    # HUGE list of names of non profits. easy to get. few actually have profiles though.
+    for bbbid in np.arange(idrange[0],idrange[1]):
+        r = _BBBCheck(bbbid)
+        time.sleep(0.1)
+        with open(basepath + "BBB/index.txt", "a") as myfile:
+            myfile.write(r.url.split('/')[-1])
+        if "we do not have a current report" in r.content:
+            print "No report for bbbid {}".format(bbbid)
+        else:
+            # download the file if they have a report
+             
+        
+
+def _BBBCheck(bbbid):
+    url = "http://www.bbb.org/charity-reviews/national/{}".format(bbbid)
+    r=requests.get(url)
+    return r
+
 def _CNScrapeOther(CNdf,baselist=['history','history.detail'],idrange=(6,15),pause=0.5):
     '''This could actually be used to scrape summary as well but it was written
     later. Incorporate the _CNScrapeSummary into this if desired.'''
     
     import qMail
-    
-
     
     acceptablebases = ['summary','history','history.detail','comments']
     subdf = CNdf.loc[idrange[0]:idrange[1]]
@@ -64,8 +87,6 @@ def _CNScrapeOther(CNdf,baselist=['history','history.detail'],idrange=(6,15),pau
     # 
     # local_file.write(r.content)
 
-# Hardcode this base path for now.
-basepath = "/Users/amorgan/Documents/Insight/"
 
 def _CNGetList():
     '''Return dataframe of CharityNavigator indices'''
