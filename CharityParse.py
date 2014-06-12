@@ -14,6 +14,7 @@ import numpy as np
 import requests
 import qErr
 # 
+import numpy as np
 import lxml # html/xml parser
 
 # Hardcode this base path for now.
@@ -28,28 +29,77 @@ cn_pass = os.environ.get("CN_PASS")
 
 
 
-def _CNSummaryLoop(cndf):
-    '''Loop through and parse the CN summary pages'''
+def _CNSummaryLoop(cndf,searchrange=None):
+    '''Loop through and parse the CN summary pages, then add them to a dataframe'''
+    index = cndf.CNid.astype('int')
+    columns = [u'PROGRAM_EXPENSES',
+     u'DONORADVISORY',
+     u'CN_ID',
+     u'TOTAL_PRIMARY_REVENUE',
+     u'CHARITYTAGLINE',
+     u'MEMBERSHIP_DUES',
+     u'ACCOUNTABILITY_AND_TRANSPARENCY_RATING',
+     u'FINANCIAL_VALUE',
+     u'ADMINISTRATIVE_EXPENSES',
+     u'PROGRAM_SERVICE_REVENUE',
+     u'CONTRIBUTIONS_GIFTS_AND_GRANTS',
+     u'OTHER_REVENUE',
+     u'TOTAL_CONTRIBUTIONS',
+     u'TOTAL_FUNCTIONAL_EXPENSES',
+     u'RELATED_ORGANIZATIONS',
+     u'ACCOUNTABILITY_AND_TRANSPARENCY_VALUE',
+     u'PAYMENTS_TO_AFFILIATES',
+     u'CHARITYCLASS',
+     u'GOVERNMENT_GRANTS',
+     u'FUNDRAISING_EVENTS',
+     u'NET_ASSETS',
+     u'FINANCIAL_RATING',
+     u'EXCESS_FOR_THE_YEAR',
+     u'FUNDRAISING_EXPENSES',
+     u'CHARITYNAME',
+     u'OVERALL_RATING',
+     u'OVERALL_VALUE',
+     u'TOTAL_REVENUE',
+     u'FEDERATED_CAMPAIGNS']
+    
+    CNFull = pd.DataFrame(index=index, columns=columns)
+    
     searchpath = basepath + "/CharityNavigator/raw/summary/"
-    indexpagelist = glob.glob(searchpath + '*.html')
-    assert len(indexpagelist) > 0
+    # indexpagelist = glob.glob(searchpath + '*.html')
+    # assert len(indexpagelist) > 0
     orgidlist = []
     orgnamelist = []
     
     cnidlist = []
     cn_finances_history_web_list = []
     
+    unable_to_parse_list = []
+    
+    count=0
+    
+    if searchrange:
+        indexrange = index[searchrange[0]:searchrange[1]]
+    else:
+        indexrange = index
+    
+    
     # Load up the index page, summary3203.html, etc
-    for indexpage in indexpagelist:
+    for ind in indexrange:#[searchrange[0]:searchrange[1]]:
+        indexpage=searchpath + "summary" + str(ind) + ".html"
+        count+=1 
+        if np.mod(count,50) == 0:
+            print "Finished {} out of {}".format(count,len(indexrange))
         cndict=_CNSummaryParse(indexpage)
+        if cndict:
+            current_id = cndict[u'CN_ID']
+            CNFull.ix[current_id].update(pd.Series(cndict))
     
     
-    
-    CNsummarydf = pd.DataFrame({'CNid':orgidlist})
-    return CNdf
+    # CNsummarydf = pd.DataFrame({'CNid':orgidlist})
+    return CNFull
 def _CNSummaryParse(indexpage):
     '''Parse CN Summary Pages'''
-    cndict={}
+    cn_dict={}
     indexpagepath = indexpage
     if os.path.exists(indexpagepath):
         # Grab the Charity Navigator page ID
@@ -61,57 +111,12 @@ def _CNSummaryParse(indexpage):
         html = open(indexpagepath,'r')
         soup = BeautifulSoup(html)
         
+        donoradvisory = 0
         if "Donor Advisory" in soup.find('title').text:
             print soup.find('title').text
             print "  DONOR ADVISORY FOR id {}; skipping".format(cnid)
-            return
-            
-        # NOW FOR THE FUN PARSING PART.
-    
-        #################################################
-        # HISTORICAL REVENUE & PROGRAM EXPENSES
-        #  from google visualization
-        #  put these in a separate table
+            donoradvisory = 1
         
-        # these will be in a <script> tag:
-        #   ['Year', 'Primary Revenue', 'Program Expenses'],
-        # ['2009',  477240602.0000,   471243724.0000], ['2010',  550469681.0000,   436929989.0000], ['2011',  535384778.0000,   467860232.0000], ['2012',  554416396.0000,   465069220.0000] 
-        # 
-        # 
-        scripts=soup.findAll('script')
-        
-        for script in scripts:
-            strscript=str(script)
-            if "'Year', 'Primary Revenue', 'Program Expenses'" in strscript:
-                lines=strscript.split("\r\n")
-                indexbool = ["['Year', 'Primary Revenue', 'Program Expenses']" in line for line in lines]
-                indexreturn = np.where(np.array(indexbool)) # Out[215]: (array([4]),)
-                index = indexreturn[0]+1 # the values will be one line after the header
-                financialhistorylist = []
-                yearlist=[]
-                revlist=[]
-                explist=[]
-                valuelist = lines[index].strip().split(', [')
-                for values in valuelist:
-                    items=values.strip(']').strip('[').split(',')
-                    cleaneditems = [float(item.strip("'").strip()) for item in items]
-                    yearlist.append(cleaneditems[0])
-                    revlist.append(cleaneditems[1])
-                    explist.append(cleaneditems[2])
-                    # raise Exception
-                    if len(items) == 0:
-                        raise ValueError('Empty historical revenue list. Could not parse.')
-                    elif len(items) != 3:
-                        raise ValueError('Could not parse historical revenue list.')
-                    # financialhistorylist.append(cleaneditems)
-        
-        # transpose it and feed it into pandas
-        np.array(financialhistorylist).T
-        cn_summary_finances_history_web_df = pd.DataFrame({'cn_id':cnid,
-                                            'year':yearlist,
-                                            'primary_revenue':revlist,
-                                            'program_expenses':explist}) 
-
         #################################################
         
         # grab the main html:
@@ -123,181 +128,241 @@ def _CNSummaryParse(indexpage):
         # u'Loans that change lives'
         classification = mainsoup.find('p','crumbs').string
         # u'International : Development and Relief Services'
-        infodict = {'CHARITYNAME':charityname,
-                    'CHARITYTAGLINE':tagline,
-                    'CHARITYCLASS':classification}
-        
-        summarysoup = mainsoup.find('div','summarywrap')
-        
-        # the metric calculation tables are in 'shadedtable' class
-        shadedtables=summarysoup.findAll('div','shadedtable')
-        
-        overallbool = ['Overall' in s_table.text for s_table in shadedtables]
-        financialbool = ['Financial Performance Metrics' in s_table.text for s_table in shadedtables]
-        accountabilitybool = ['Transparency Performance Metrics' in s_table.text for s_table in shadedtables]
-        
-        overallindex = np.where(overallbool)[0][0]
-        financialindex = np.where(financialbool)[0][0]
-        accountabilityindex = np.where(accountabilitybool)[0][0]
-        
-        overalltable = shadedtables[overallindex]
-        financialtable = shadedtables[financialindex]
-        accountabilitytable = shadedtables[accountabilityindex]
-        
-        # 0 overall table
-            # RATINGTYPE        SCORE       RATING
-            # overall           float       int
-            # financial         float       int
-            # accountability    float       int
+        infodict = {u'CHARITYNAME':charityname,
+                    u'CHARITYTAGLINE':tagline,
+                    u'CHARITYCLASS':classification,
+                    u'DONORADVISORY':donoradvisory}
         ratingdict={}
-        
-        rowlist = overalltable.findAll('tr')
-        for row in rowlist:
-            itriplet = row.findAll('td')
-            if len(itriplet) == 3:
-                ikey = (itriplet[0].text)\
-                    .replace('&nbsp;','')\
-                    .replace(' ','_')\
-                    .replace(',','')\
-                    .upper()\
-                    .replace('(OR_DEFICIT)','')\
-                    .replace('&AMP;','AND')
-                ival = (itriplet[1].text)\
-                    .replace('&nbsp;','')\
-                    .replace('$','')\
-                    .replace(',','')
-                irank = (itriplet[2].find('img')['title'])
-
-                key1 = ikey+'_VALUE'
-                key2 = ikey+'_RATING'
-                
-                ratingdict.update({key1:float(ival)})
-                ratingdict.update({key2:irank})
-                
-        
-        
-        # 1 Financial Performance Metrics
-            # Program Expenses         82.6% 
-            # Administrative Expenses    12.3%
-            # Fundraising Expenses   5.0%
-            # Fundraising Efficiency    $0.04
-            # Primary Revenue Growth     20.1%
-            # Program Expenses Growth    11.4%
-            # Working Capital Ratio (years) 1.30
-            
-        #2 Accountability &amp; Transparency Performance Metrics
-            # Independent Voting Board Members  
-            # No Material diversion of assets   
-            # Audited financials prepared by independent accountant 
-            # Does Not Provide Loan(s) to or Receive Loan(s) From related parties   
-            # Documents Board Meeting Minutes   
-            # Provided copy of Form 990 to organizations governing body in advance of filing    
-            # Conflict of Interest Policy   
-            # Whistleblower Policy  
-            # Records Retention and Destruction Policy  
-            # CEO listed with salary    
-            # Process for determining CEO compensation  
-            # Board Listed / Board Members Not Compensated  
-            # Donor Privacy Policy  
-            # Board Members Listed  
-            # Audited Financials    
-            # Form 990  
-            # Key staff listed  
-           
-        #
-        summaries = summarysoup.findAll('div','summaryBox')    
-           # 0: Accountability &amp; Transparency Performance Metrics
-           # 1: Income Statement
-           # 2: Charts
-           # 3: Compensation of Leaders
-           # 4: Mission
-           # 5: Charities Performing Similar Types of Work
-        
-        # FINANCIAL TABLE - INCOME STATEMENT
-        
-        # could loop over these and grab the innards.. right now just taking the income statement
-        incomestatement = summaries[1]
         incomedict={}
         
-        itemlist = incomestatement.findAll('tr')
+        if donoradvisory == 0:
+            # NOW FOR THE FUN PARSING PART.
+    
+            #################################################
+            # HISTORICAL REVENUE & PROGRAM EXPENSES
+            #  from google visualization
+            #  put these in a separate table
         
-        for item in itemlist:
-            ipair = item.findAll('td')
-            if len(ipair) == 2:
-                ikey = (ipair[0].text)\
-                    .replace('&nbsp;','')\
-                    .replace(' ','_')\
-                    .replace(',','')\
-                    .upper()\
-                    .replace('(OR_DEFICIT)','')\
-                    .replace('&AMP;','AND')
-                ival = (ipair[1].text)\
-                    .replace('&nbsp;','')\
-                    .replace('$','')\
-                    .replace(',','')
-                try:
-                    # these should all be integers
-                    ival=int(ival)
-                except:
-                    continue
-                incomedict.update({ikey:ival})
+            # these will be in a <script> tag:
+            #   ['Year', 'Primary Revenue', 'Program Expenses'],
+            # ['2009',  477240602.0000,   471243724.0000], ['2010',  550469681.0000,   436929989.0000], ['2011',  535384778.0000,   467860232.0000], ['2012',  554416396.0000,   465069220.0000] 
+            # 
+            # 
+            scripts=soup.findAll('script')
+        
+            for script in scripts:
+                strscript=str(script)
+                if "'Year', 'Primary Revenue', 'Program Expenses'" in strscript:
+                    lines=strscript.split("\r\n")
+                    indexbool = ["['Year', 'Primary Revenue', 'Program Expenses']" in line for line in lines]
+                    indexreturn = np.where(np.array(indexbool)) # Out[215]: (array([4]),)
+                    index = indexreturn[0]+1 # the values will be one line after the header
+                    financialhistorylist = []
+                    yearlist=[]
+                    revlist=[]
+                    explist=[]
+                    valuelist = lines[index].strip().split(', [')
+                    for values in valuelist:
+                        items=values.strip(']').strip('[').split(',')
+                        cleaneditems = [float(item.strip("'").strip()) for item in items]
+                        yearlist.append(cleaneditems[0])
+                        revlist.append(cleaneditems[1])
+                        explist.append(cleaneditems[2])
+                        # raise Exception
+                        if len(items) == 0:
+                            raise ValueError('Empty historical revenue list. Could not parse.')
+                        elif len(items) != 3:
+                            raise ValueError('Could not parse historical revenue list.')
+                        # financialhistorylist.append(cleaneditems)
+        
+            # transpose it and feed it into pandas
+            np.array(financialhistorylist).T
+            cn_summary_finances_history_web_df = pd.DataFrame({'cn_id':cnid,
+                                                'year':yearlist,
+                                                'primary_revenue':revlist,
+                                                'program_expenses':explist}) 
+
+
+        
+        
+            summarysoup = mainsoup.find('div','summarywrap')
+        
+            # the metric calculation tables are in 'shadedtable' class
+            shadedtables=summarysoup.findAll('div','shadedtable')
+        
+            overallbool = ['Overall' in s_table.text for s_table in shadedtables]
+            financialbool = ['Financial Performance Metrics' in s_table.text for s_table in shadedtables]
+            accountabilitybool = ['Transparency Performance Metrics' in s_table.text for s_table in shadedtables]
+        
+            overallindex = np.where(overallbool)[0][0]
+            financialindex = np.where(financialbool)[0][0]
+            accountabilityindex = np.where(accountabilitybool)[0][0]
+        
+            overalltable = shadedtables[overallindex]
+            financialtable = shadedtables[financialindex]
+            accountabilitytable = shadedtables[accountabilityindex]
+        
+            # 0 overall table
+                # RATINGTYPE        SCORE       RATING
+                # overall           float       int
+                # financial         float       int
+                # accountability    float       int
+        
+        
+            rowlist = overalltable.findAll('tr')
+            for row in rowlist:
+                itriplet = row.findAll('td')
+                if len(itriplet) == 3:
+                    ikey = (itriplet[0].text)\
+                        .replace('&nbsp;','')\
+                        .replace(' ','_')\
+                        .replace(',','')\
+                        .upper()\
+                        .replace('(OR_DEFICIT)','')\
+                        .replace('&AMP;','AND')
+                    ival = (itriplet[1].text)\
+                        .replace('&nbsp;','')\
+                        .replace('$','')\
+                        .replace(',','')
+                    irank = (itriplet[2].find('img')['title'])
+
+                    key1 = ikey+'_VALUE'
+                    key2 = ikey+'_RATING'
+                
+                    ratingdict.update({key1:float(ival)})
+                    ratingdict.update({key2:irank})
+                
+        
+        
+            # 1 Financial Performance Metrics
+                # Program Expenses         82.6% 
+                # Administrative Expenses    12.3%
+                # Fundraising Expenses   5.0%
+                # Fundraising Efficiency    $0.04
+                # Primary Revenue Growth     20.1%
+                # Program Expenses Growth    11.4%
+                # Working Capital Ratio (years) 1.30
+            
+            #2 Accountability &amp; Transparency Performance Metrics
+                # Independent Voting Board Members  
+                # No Material diversion of assets   
+                # Audited financials prepared by independent accountant 
+                # Does Not Provide Loan(s) to or Receive Loan(s) From related parties   
+                # Documents Board Meeting Minutes   
+                # Provided copy of Form 990 to organizations governing body in advance of filing    
+                # Conflict of Interest Policy   
+                # Whistleblower Policy  
+                # Records Retention and Destruction Policy  
+                # CEO listed with salary    
+                # Process for determining CEO compensation  
+                # Board Listed / Board Members Not Compensated  
+                # Donor Privacy Policy  
+                # Board Members Listed  
+                # Audited Financials    
+                # Form 990  
+                # Key staff listed  
+           
+            #
+            summaries = summarysoup.findAll('div','summaryBox')    
+               # 0: Accountability &amp; Transparency Performance Metrics
+               # 1: Income Statement
+               # 2: Charts
+               # 3: Compensation of Leaders
+               # 4: Mission
+               # 5: Charities Performing Similar Types of Work
+        
+            #Charity Login??
+        
+            # FINANCIAL TABLE - INCOME STATEMENT
+        
+            # could loop over these and grab the innards.. right now just taking the income statement
+            incomestatement = summaries[1]
+        
+        
+            itemlist = incomestatement.findAll('tr')
+        
+            for item in itemlist:
+                ipair = item.findAll('td')
+                if len(ipair) == 2:
+                    ikey = (ipair[0].text)\
+                        .replace('&nbsp;','')\
+                        .replace(' ','_')\
+                        .replace(',','')\
+                        .upper()\
+                        .replace('(OR_DEFICIT)','')\
+                        .replace('&AMP;','AND')
+                    ival = (ipair[1].text)\
+                        .replace('&nbsp;','')\
+                        .replace('$','')\
+                        .replace(',','')
+                    try:
+                        # these should all be integers
+                        ival=int(ival)
+                    except:
+                        continue
+                    incomedict.update({ikey:ival})
                    
-        # FINANCIAL METRICS
-        # program_expenses 
-        # admin_expenses 
-        # fundraising_expenses
-        # fundraising_efficiency
-        # revenue_growth
-        # expenses_growth
-        # working_capital_ratio
+            # FINANCIAL METRICS
+            # program_expenses 
+            # admin_expenses 
+            # fundraising_expenses
+            # fundraising_efficiency
+            # revenue_growth
+            # expenses_growth
+            # working_capital_ratio
         
 
-        #################################################        
-        # # possible icons
-        # _gfx_/icons/checked.gif
-        # _gfx_/icons/checkboxX.gif
-        # _gfx_/icons/CheckboxOptOut.png
-        # 
+            #################################################        
+            # # possible icons
+            # _gfx_/icons/checked.gif
+            # _gfx_/icons/checkboxX.gif
+            # _gfx_/icons/CheckboxOptOut.png
+            # 
         
-        #Accountability Metrics
-        # ivb_members
-        # diversion_of_assests
-        # audited_financials
-        # loans_conflicting
-        # board_minutes
-        # distributed_990
-        # whistleblower_policy
-        # records_policy
-        # ceo_listed
-        # board_listed
+            #Accountability Metrics
+            # ivb_members
+            # diversion_of_assests
+            # audited_financials
+            # loans_conflicting
+            # board_minutes
+            # distributed_990
+            # whistleblower_policy
+            # records_policy
+            # ceo_listed
+            # board_listed
         
-        #website
+            #website
         
-        # donor_privacy_web
-        # board_listed_web
-        # audited_financials_web
-        # form_990_web
-        # key_staff_web
-        
-        
+            # donor_privacy_web
+            # board_listed_web
+            # audited_financials_web
+            # form_990_web
+            # key_staff_web
         
         
         
         
-         # GET YEAR for verifying that it stays constant. 
         
         
-        # all of the text names are in links (a href ...)
-        # alist=soup.findAll('a')
-        # for link in alist:
-        #     if 'orgid' in link.get('href'):
-        #         orgid = link.get('href').split('=')[-1]
-        #         orgname = link.text
-        #         orgidlist.append(orgid)
-        #         orgnamelist.append(orgname)
+             # GET YEAR for verifying that it stays constant. 
+        
+        
+            # all of the text names are in links (a href ...)
+            # alist=soup.findAll('a')
+            # for link in alist:
+            #     if 'orgid' in link.get('href'):
+            #         orgid = link.get('href').split('=')[-1]
+            #         orgname = link.text
+            #         orgidlist.append(orgid)
+            #         orgnamelist.append(orgname)
     else:
         raise ValueError("Page {} was indexed but doesn't exist??".format(indexpage))
-    return cn_summary_finances_history_web_df
+    
+    cn_dict.update(ratingdict)
+    cn_dict.update(incomedict)
+    cn_dict.update(infodict)
+    cn_dict.update({u'CN_ID':cnid})
+    return cn_dict #,cn_summary_finances_history_web_df
 
 def _CNHistoryParse():
     '''Parse CN History Pages'''
