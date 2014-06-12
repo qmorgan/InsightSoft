@@ -35,6 +35,7 @@ def _CNSummaryLoop(cndf,searchrange=None):
     columns = [u'PROGRAM_EXPENSES',
      u'DONORADVISORY',
      u'CN_ID',
+     u'SUMMARY_YEAR',
      u'TOTAL_PRIMARY_REVENUE',
      u'CHARITYTAGLINE',
      u'MEMBERSHIP_DUES',
@@ -64,6 +65,23 @@ def _CNSummaryLoop(cndf,searchrange=None):
     
     CNFull = pd.DataFrame(index=index, columns=columns)
     
+    # index2=np.arange(len(index)*4)
+    columns2=[u'CN_ID',
+        u'YEAR',
+        u'PRIMARY_REVENUE',
+        u'PROGRAM_EXPENSES']
+    
+    FinancesHistWebFull = pd.DataFrame(index=[0],columns=columns2)
+    
+    columns3=[u'CN_ID',
+        u'EMPLOYEE_NAME',
+        u'EMPLOYEE_POSITION',
+        u'SALARY',
+        u'SALARY_PCT_OF_TOTAL',
+        u'YEAR']
+    
+    CompensationFull = pd.DataFrame(index=[0],columns=columns3)
+    
     searchpath = basepath + "/CharityNavigator/raw/summary/"
     # indexpagelist = glob.glob(searchpath + '*.html')
     # assert len(indexpagelist) > 0
@@ -82,21 +100,33 @@ def _CNSummaryLoop(cndf,searchrange=None):
     else:
         indexrange = index
     
-    
+    fcount=0
+    scount=0
     # Load up the index page, summary3203.html, etc
     for ind in indexrange:#[searchrange[0]:searchrange[1]]:
         indexpage=searchpath + "summary" + str(ind) + ".html"
         count+=1 
-        if np.mod(count,50) == 0:
+        if np.mod(count,25) == 0:
             print "Finished {} out of {}".format(count,len(indexrange))
-        cndict=_CNSummaryParse(indexpage)
+        cndict,histdf,compdf=_CNSummaryParse(indexpage)
         if cndict:
             current_id = cndict[u'CN_ID']
             CNFull.ix[current_id].update(pd.Series(cndict))
-    
-    
+        else:
+            print "NOTHING FOR CN_ID {}".format(ind)
+        
+        if len(histdf) != 0:
+            # fcountstop = fcount + len(histdf)
+            # FinancesHistWebFull.ix[fcount:fcountstop].update(histdf)
+            # fcount = fcountstop
+            # print histdf
+            FinancesHistWebFull=FinancesHistWebFull.append(histdf,ignore_index=True)
+        if len(compdf) != 0:
+            # scountstop = scount + len(compdf)
+            # CompensationFull.ix[scount:scountstop].update(compdf)
+            CompensationFull=CompensationFull.append(compdf,ignore_index=True)
     # CNsummarydf = pd.DataFrame({'CNid':orgidlist})
-    return CNFull
+    return CNFull, FinancesHistWebFull, CompensationFull
 def _CNSummaryParse(indexpage):
     '''Parse CN Summary Pages'''
     cn_dict={}
@@ -134,6 +164,9 @@ def _CNSummaryParse(indexpage):
                     u'DONORADVISORY':donoradvisory}
         ratingdict={}
         incomedict={}
+        yeardict={}
+        cn_summary_finances_history_web_df=[]
+        comp_df=[]
         
         if donoradvisory == 0:
             # NOW FOR THE FUN PARSING PART.
@@ -177,10 +210,10 @@ def _CNSummaryParse(indexpage):
         
             # transpose it and feed it into pandas
             np.array(financialhistorylist).T
-            cn_summary_finances_history_web_df = pd.DataFrame({'cn_id':cnid,
-                                                'year':yearlist,
-                                                'primary_revenue':revlist,
-                                                'program_expenses':explist}) 
+            cn_summary_finances_history_web_df = pd.DataFrame({'CN_ID':cnid,
+                                                'YEAR':yearlist,
+                                                'PRIMARY_REVENUE':revlist,
+                                                'PROGRAM_EXPENSES':explist}) 
 
 
         
@@ -201,6 +234,9 @@ def _CNSummaryParse(indexpage):
             overalltable = shadedtables[overallindex]
             financialtable = shadedtables[financialindex]
             accountabilitytable = shadedtables[accountabilityindex]
+        
+            summary_year = overalltable.findAll('th','centerme')[-1].text.split('/')[-1]
+            yeardict = {u'SUMMARY_YEAR':summary_year}
         
             # 0 overall table
                 # RATINGTYPE        SCORE       RATING
@@ -278,7 +314,6 @@ def _CNSummaryParse(indexpage):
             # could loop over these and grab the innards.. right now just taking the income statement
             incomestatement = summaries[1]
         
-        
             itemlist = incomestatement.findAll('tr')
         
             for item in itemlist:
@@ -301,7 +336,23 @@ def _CNSummaryParse(indexpage):
                     except:
                         continue
                     incomedict.update({ikey:ival})
-                   
+            
+            salarystatement = summaries[3]
+            
+            itemlist = salarystatement.findAll('tr')    
+            compensations=[[item.text for item in itemlist[indd].findAll('td')] for indd in range(len(itemlist))]
+            compensations_list = []   
+            for comp in compensations:
+                if len(comp) == 5:
+                    compensations_list.append(comp)
+            
+            comp_array = np.array(compensations_list).T[0:4]
+            comp_df = pd.DataFrame({u'CN_ID':cnid,u'YEAR':2012,
+                u'SALARY':[(sal.replace('$','').replace(',','')) for sal in comp_array[0]],
+                u'SALARY_PCT_OF_TOTAL':[(sal.replace('%','')) for sal in comp_array[1]],
+                u'EMPLOYEE_NAME':comp_array[2],
+                u'EMPLOYEE_POSITION':comp_array[3]})
+         
             # FINANCIAL METRICS
             # program_expenses 
             # admin_expenses 
@@ -361,8 +412,9 @@ def _CNSummaryParse(indexpage):
     cn_dict.update(ratingdict)
     cn_dict.update(incomedict)
     cn_dict.update(infodict)
+    cn_dict.update(yeardict)
     cn_dict.update({u'CN_ID':cnid})
-    return cn_dict #,cn_summary_finances_history_web_df
+    return cn_dict ,cn_summary_finances_history_web_df, comp_df
 
 def _CNHistoryParse():
     '''Parse CN History Pages'''
