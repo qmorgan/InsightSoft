@@ -65,13 +65,13 @@ def _CNSummaryLoop(cndf,searchrange=None):
     
     CNFull = pd.DataFrame(index=index, columns=columns)
     
-    # index2=np.arange(len(index)*4)
+    index2=np.arange(len(index)*4)
     columns2=[u'CN_ID',
         u'YEAR',
         u'PRIMARY_REVENUE',
         u'PROGRAM_EXPENSES']
     
-    FinancesHistWebFull = pd.DataFrame(index=[0],columns=columns2)
+    FinancesHistWebFull = pd.DataFrame(index=index2,columns=columns2)
     
     columns3=[u'CN_ID',
         u'EMPLOYEE_NAME',
@@ -80,7 +80,7 @@ def _CNSummaryLoop(cndf,searchrange=None):
         u'SALARY_PCT_OF_TOTAL',
         u'YEAR']
     
-    CompensationFull = pd.DataFrame(index=[0],columns=columns3)
+    CompensationFull = pd.DataFrame(index=index2,columns=columns3)
     
     searchpath = basepath + "/CharityNavigator/raw/summary/"
     # indexpagelist = glob.glob(searchpath + '*.html')
@@ -102,6 +102,7 @@ def _CNSummaryLoop(cndf,searchrange=None):
     
     fcount=0
     scount=0
+    currentcount=0
     # Load up the index page, summary3203.html, etc
     for ind in indexrange:#[searchrange[0]:searchrange[1]]:
         indexpage=searchpath + "summary" + str(ind) + ".html"
@@ -116,15 +117,18 @@ def _CNSummaryLoop(cndf,searchrange=None):
             print "NOTHING FOR CN_ID {}".format(ind)
         
         if len(histdf) != 0:
-            # fcountstop = fcount + len(histdf)
-            # FinancesHistWebFull.ix[fcount:fcountstop].update(histdf)
-            # fcount = fcountstop
-            # print histdf
-            FinancesHistWebFull=FinancesHistWebFull.append(histdf,ignore_index=True)
+
+            for ind in np.arange(len(histdf)):
+                FinancesHistWebFull.ix[ind+scount].update(histdf.loc[ind])                  
+            scount += len(histdf)
+            
         if len(compdf) != 0:
             # scountstop = scount + len(compdf)
             # CompensationFull.ix[scount:scountstop].update(compdf)
-            CompensationFull=CompensationFull.append(compdf,ignore_index=True)
+            # CompensationFull=CompensationFull.append(compdf,ignore_index=True)
+            for ind in np.arange(len(compdf)):
+                CompensationFull.ix[ind+fcount].update(compdf.loc[ind])
+            fcount += len(compdf)
     # CNsummarydf = pd.DataFrame({'CNid':orgidlist})
     return CNFull, FinancesHistWebFull, CompensationFull
 def _CNSummaryParse(indexpage):
