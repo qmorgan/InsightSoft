@@ -61,11 +61,17 @@ def _CNSummaryParse(indexpage):
         html = open(indexpagepath,'r')
         soup = BeautifulSoup(html)
         
+        if "Donor Advisory" in soup.find('title').text:
+            print soup.find('title').text
+            print "  DONOR ADVISORY FOR id {}; skipping".format(cnid)
+            return
+            
         # NOW FOR THE FUN PARSING PART.
     
+        #################################################
         # HISTORICAL REVENUE & PROGRAM EXPENSES
         #  from google visualization
-        #  put these in a separate table?
+        #  put these in a separate table
         
         # these will be in a <script> tag:
         #   ['Year', 'Primary Revenue', 'Program Expenses'],
@@ -105,13 +111,138 @@ def _CNSummaryParse(indexpage):
                                             'year':yearlist,
                                             'primary_revenue':revlist,
                                             'program_expenses':explist}) 
+
+        #################################################
+        
+        # grab the main html:
+        mainsoup = soup.find('div',id='maincontent2')
+        
+        charityname = mainsoup.find('h1','charityname').string
+        # u'Kiva'
+        tagline = mainsoup.find('h2','tagline').string
+        # u'Loans that change lives'
+        classification = mainsoup.find('p','crumbs').string
+        # u'International : Development and Relief Services'
+        infodict = {'CHARITYNAME':charityname,
+                    'CHARITYTAGLINE':tagline,
+                    'CHARITYCLASS':classification}
+        
+        summarysoup = mainsoup.find('div','summarywrap')
+        
+        # the metric calculation tables are in 'shadedtable' class
+        shadedtables=summarysoup.findAll('div','shadedtable')
+        
+        overallbool = ['Overall' in s_table.text for s_table in shadedtables]
+        financialbool = ['Financial Performance Metrics' in s_table.text for s_table in shadedtables]
+        accountabilitybool = ['Transparency Performance Metrics' in s_table.text for s_table in shadedtables]
+        
+        overallindex = np.where(overallbool)[0][0]
+        financialindex = np.where(financialbool)[0][0]
+        accountabilityindex = np.where(accountabilitybool)[0][0]
+        
+        overalltable = shadedtables[overallindex]
+        financialtable = shadedtables[financialindex]
+        accountabilitytable = shadedtables[accountabilityindex]
+        
+        # 0 overall table
+            # RATINGTYPE        SCORE       RATING
+            # overall           float       int
+            # financial         float       int
+            # accountability    float       int
+        ratingdict={}
+        
+        rowlist = overalltable.findAll('tr')
+        for row in rowlist:
+            itriplet = row.findAll('td')
+            if len(itriplet) == 3:
+                ikey = (itriplet[0].text)\
+                    .replace('&nbsp;','')\
+                    .replace(' ','_')\
+                    .replace(',','')\
+                    .upper()\
+                    .replace('(OR_DEFICIT)','')\
+                    .replace('&AMP;','AND')
+                ival = (itriplet[1].text)\
+                    .replace('&nbsp;','')\
+                    .replace('$','')\
+                    .replace(',','')
+                irank = (itriplet[2].find('img')['title'])
+
+                key1 = ikey+'_VALUE'
+                key2 = ikey+'_RATING'
                 
-            # else: 
-            #     print 'no'
+                ratingdict.update({key1:float(ival)})
+                ratingdict.update({key2:irank})
+                
         
         
+        # 1 Financial Performance Metrics
+            # Program Expenses         82.6% 
+            # Administrative Expenses    12.3%
+            # Fundraising Expenses   5.0%
+            # Fundraising Efficiency    $0.04
+            # Primary Revenue Growth     20.1%
+            # Program Expenses Growth    11.4%
+            # Working Capital Ratio (years) 1.30
+            
+        #2 Accountability &amp; Transparency Performance Metrics
+            # Independent Voting Board Members  
+            # No Material diversion of assets   
+            # Audited financials prepared by independent accountant 
+            # Does Not Provide Loan(s) to or Receive Loan(s) From related parties   
+            # Documents Board Meeting Minutes   
+            # Provided copy of Form 990 to organizations governing body in advance of filing    
+            # Conflict of Interest Policy   
+            # Whistleblower Policy  
+            # Records Retention and Destruction Policy  
+            # CEO listed with salary    
+            # Process for determining CEO compensation  
+            # Board Listed / Board Members Not Compensated  
+            # Donor Privacy Policy  
+            # Board Members Listed  
+            # Audited Financials    
+            # Form 990  
+            # Key staff listed  
+           
+        #
+        summaries = summarysoup.findAll('div','summaryBox')    
+           # 0: Accountability &amp; Transparency Performance Metrics
+           # 1: Income Statement
+           # 2: Charts
+           # 3: Compensation of Leaders
+           # 4: Mission
+           # 5: Charities Performing Similar Types of Work
         
-        #Financial metrics 
+        # FINANCIAL TABLE - INCOME STATEMENT
+        
+        # could loop over these and grab the innards.. right now just taking the income statement
+        incomestatement = summaries[1]
+        incomedict={}
+        
+        itemlist = incomestatement.findAll('tr')
+        
+        for item in itemlist:
+            ipair = item.findAll('td')
+            if len(ipair) == 2:
+                ikey = (ipair[0].text)\
+                    .replace('&nbsp;','')\
+                    .replace(' ','_')\
+                    .replace(',','')\
+                    .upper()\
+                    .replace('(OR_DEFICIT)','')\
+                    .replace('&AMP;','AND')
+                ival = (ipair[1].text)\
+                    .replace('&nbsp;','')\
+                    .replace('$','')\
+                    .replace(',','')
+                try:
+                    # these should all be integers
+                    ival=int(ival)
+                except:
+                    continue
+                incomedict.update({ikey:ival})
+                   
+        # FINANCIAL METRICS
         # program_expenses 
         # admin_expenses 
         # fundraising_expenses
@@ -120,6 +251,8 @@ def _CNSummaryParse(indexpage):
         # expenses_growth
         # working_capital_ratio
         
+
+        #################################################        
         # # possible icons
         # _gfx_/icons/checked.gif
         # _gfx_/icons/checkboxX.gif
@@ -146,7 +279,10 @@ def _CNSummaryParse(indexpage):
         # form_990_web
         # key_staff_web
         
-        # FINANCIAL TABLE - INCOME STATEMENT
+        
+        
+        
+        
         
          # GET YEAR for verifying that it stays constant. 
         
