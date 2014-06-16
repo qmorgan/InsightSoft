@@ -12,26 +12,67 @@ import glob
 import time
 import numpy as np
 import requests
+import qErr
 # 
 
 # Hardcode this base path for now.
-basepath = "/Users/amorgan/Documents/Insight/"
+
+if not os.environ.has_key("insight"):
+    print "You need to set the environment variable 'insight' to point to the"
+    print "directory where you have 'insight' installed"
+    sys.exit(1)
+basepath = os.environ.get("insight")
+cn_user = os.environ.get("CN_USER")
+cn_pass = os.environ.get("CN_PASS")
 
 
-
-def _BBBLoop(idrange=(1,5)):
+def _BBBLoop(idrange=(1,100),pause=0.25):
     # last bbb id is 40196
     # HUGE list of names of non profits. easy to get. few actually have profiles though.
     for bbbid in np.arange(idrange[0],idrange[1]):
-        r = _BBBCheck(bbbid)
-        time.sleep(0.1)
-        with open(basepath + "BBB/index.txt", "a") as myfile:
-            myfile.write(r.url.split('/')[-1])
-        if "we do not have a current report" in r.content:
-            print "No report for bbbid {}".format(bbbid)
-        else:
+        try:
+        
+            timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
+            time.sleep(timetopause)
+
+            try:
+                r = _BBBCheck(bbbid)
+            except:
+                with open(basepath + "BBB/index.txt", "a") as myfile:
+                    print "Error opening webpage id {}".format(bbbid)
+                    myfile.write("Error*\t{}\n".format(bbbid))
+                continue
+
+            bbbname = r.url.split('/')[-1] 
+                
+            with open(basepath + "BBB/index.txt", "a") as myfile:
+            
+                if "we do not have a current report" in r.content:
+                    print "No report for bbbid {}".format(bbbid)
+                    myfile.write("NoRept ")
+                    write=False
+                elif "404: Page Not Found" in r.content:
+                    print "Page error for bbbid {}".format(bbbid)
+                    myfile.write("404Err ")
+                    write=False
+                elif "Page Not Found" in r.content:
+                    print "Page error for bbbid {}".format(bbbid)
+                    myfile.write("404Er2 ")
+                    write=False
+                else:
+                    myfile.write("Report ")
+                    write=True
+                myfile.write('\t'+bbbname+'\n')
+            if write == True:
             # download the file if they have a report
-             
+                downloadpath = basepath + "BBB/raw/{}.html".format(int(bbbname.split('-')[-1]))
+                localfile = open(downloadpath,'w')
+                localfile.write(r.content)
+                localfile.close()
+                print "Wrote id {}: {}".format(bbbid,downloadpath)
+        except:
+            errtext='Couldnt scrape bbbid:{}'.format(bbbid)
+            qErr.qErr(errtitle="A scraping error has occured!",errtext=errtext)
         
 
 def _BBBCheck(bbbid):
@@ -41,16 +82,18 @@ def _BBBCheck(bbbid):
 
 def _CNScrapeOther(CNdf,baselist=['history','history.detail'],idrange=(6,15),pause=0.5):
     '''This could actually be used to scrape summary as well but it was written
-    later. Incorporate the _CNScrapeSummary into this if desired.'''
+    later. Incorporate the _CNScrapeSummary into this if desired.
+    
+    idrange: tuple of IDs to parse. IDs were scraped from the list of CN ranked charities,
+    listed in the files scraped by _CNGetList().
+    '''
     
     import qMail
     
     acceptablebases = ['summary','history','history.detail','comments']
     subdf = CNdf.loc[idrange[0]:idrange[1]]
     
-    # emailaddr=qMail.gmail_username+'@gmail.com'
-    emailaddr="qmorgan@gmail.com"
-    payload={'email':emailaddr,'password':'r0b0b00gie'}
+    payload={'email':cn_user,'password':cn_pass}
     session = requests.session()
     r=session.get('https://www.charitynavigator.org/index.cfm?bay=my.login', params=payload)
     print "Pausing to log in"
