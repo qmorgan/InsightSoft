@@ -144,7 +144,7 @@ def _CNSummaryLoop(cndf,searchrange=(0,100)):
         
             
         else:
-            print "NOTHING FOR CN_ID {}".format(ind)
+            print "NOTHING FOR CN_ID {}".format(indexpage)
         
         gc.collect()
         # if len(histdf) != 0:
@@ -462,33 +462,86 @@ def _CNSummaryParse(indexpage,find_summary=True,find_employee_comp=False,find_hi
     # print cn_dict
     return cn_dict ,cn_summary_finances_history_web_df, comp_df
 
-def _CNHistoryParse():
-    '''Parse CN History Pages'''
+
+def _CNEINLoop(searchrange=(0,100)):
+    # index = cndf.CNid.astype('int')
+    columns = [u'CN_ID',
+            u'EIN']
+    
     searchpath = basepath + "/CharityNavigator/raw/history/"
     indexpagelist = glob.glob(searchpath + '*.html')
-    assert len(indexpagelist) > 0
+    # assert len(indexpagelist) > 0
     orgidlist = []
     orgnamelist = []
+    
+    cnidlist = []
+    cn_finances_history_web_list = []
+    
+    unable_to_parse_list = []
+    
+    count=0
+    
+    CNEINDF = pd.DataFrame(index=range(len(indexpagelist)), columns=columns)
+    
+    
+    filerange=indexpagelist[searchrange[0]:searchrange[1]] 
+    
+    fcount=0
+    scount=0
+    currentcount=0
+    oldtime = time.time()
+    
+    for indexpage in filerange:
+        # indexpage=searchpath + "summary" + str(ind) + ".html"
+        current_id=count
+        count+=1 
+        if np.mod(count,50) == 0:
+            newtime = time.time()
+            print "Finished {} out of {}".format(count,len(filerange))
+            print "Last iteration took {} seconds".format(newtime-oldtime)
+            oldtime=newtime
+        EIN=_CNHistoryParse(indexpage,only_get_EIN=True)
+        if EIN:
+            # current_id = cndict[u'CN_ID']
+            # EIN = 'index.cfm?bay=search.irs&ein=364395095'
+            einstr = EIN.split('=')[-1]
+            einint=int(einstr)
+            cnidint=int(os.path.basename(indexpage).split('.')[0].replace('history',''))
+            CNEINDF.loc[current_id] = pd.Series({'CN_ID':cnidint,'EIN':einint})
+            
+        else:
+            print "NOTHING FOR CN_ID {}".format(indexpage)
+        
+        gc.collect()
+    return CNEINDF
+    
+    
+def _CNHistoryParse(indexpage,only_get_EIN=True):
+    '''Parse CN History Pages'''
+
     # Load up the index page, A.html, etc
-    for indexpage in indexpagelist:
-        indexpagepath = indexpage
-        if os.path.exists(indexpagepath):
-            html = open(indexpagepath,'r')
-            soup = BeautifulSoup(html)
-            html.close()
-            # all of the text names are in links (a href ...)
+    indexpagepath = indexpage
+    if os.path.exists(indexpagepath):
+        html = open(indexpagepath,'r')
+        soup = BeautifulSoup(html)
+        # all of the text names are in links (a href ...)
+        if only_get_EIN: # ONLY GET THE EIN AND THEN EXIT
             alist=soup.findAll('a')
             for link in alist:
-                if 'orgid' in link.get('href'):
-                    orgid = link.get('href').split('=')[-1]
-                    orgname = link.text
-                    orgidlist.append(orgid)
-                    orgnamelist.append(orgname)
-                    
-            soup.decompose()
-        else:
-            raise ValueError("Page {} was indexed but doesn't exist??".format(indexpage))
-        
+                try:
+                    if 'search.irs' in link.get('href'):
+                        orgname = link.get('href')
+                        html.close()
+                        soup.decompose()
+                        return orgname
+                except:
+                    pass
+                
+        html.close()
+        soup.decompose()
+    else:
+        raise ValueError("Page {} was indexed but doesn't exist??".format(indexpage))
+    
     # CNdf = pd.DataFrame({'CNid':orgidlist})
     # return CNdf
 
