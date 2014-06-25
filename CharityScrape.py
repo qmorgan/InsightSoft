@@ -200,16 +200,23 @@ def CharityNavigatorMain(base='',orgid=None,uid=None):
 
 
 def GuideStarLoop(idrange=[0,3],filename="/Users/amorgan/Documents/Insight/Guidestar/cnavigator6-21-14_ein_guidestarlinks.csv"):
-    pause=0.25
-    timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
-    time.sleep(timetopause)
+    # pause=0.25
+    # timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
+    # time.sleep(timetopause)
     f=file(filename)
     lines = f.readlines()
+    session = requests.session()
+    r=session.get('http://www2.guidestar.org/')
+    count=0
     for line in lines[idrange[0]:idrange[1]]:
         ein = line.strip()
-        GuideStarMain(ein)
+        GuideStarMain(ein,session=session)
+        count+=1 
+        if np.mod(count,100) == 0:
+            print " **** Finished {} out of {} **** ".format(count,idrange[1]-idrange[0])
+            
 
-def GuideStarMain(ein=None,outpath="/Users/amorgan/Documents/Insight/Guidestar"):
+def GuideStarMain(ein=None,outpath="/Users/amorgan/Documents/Insight/Guidestar",session=None):
     pause=0.25
     import os
     ein = str(ein)
@@ -217,15 +224,15 @@ def GuideStarMain(ein=None,outpath="/Users/amorgan/Documents/Insight/Guidestar")
     if len (ein) == 8:
         ein = '0'+ein
     ein = ein[0:2]+'-'+ein[2:]
-    
-    session = requests.session()
-    r=session.get('http://www2.guidestar.org/')
-    
-    try:
-        downloadpath = "{}/{}.html".format(outpath,ein)
-        checkpath = "{}/CNavigator/{}.html".format(outpath,ein)
-        # check if already downloaded
-        if not os.path.exists(checkpath) and not os.path.exists(downloadpath):
+    # 
+    if not session: 
+        session = requests.session()
+        r=session.get('http://www2.guidestar.org/')
+    downloadpath = "{}/{}.html".format(outpath,ein)
+    checkpath = "{}/CNavigator/{}.html".format(outpath,ein)
+    # check if already downloaded
+    if not os.path.exists(checkpath) and not os.path.exists(downloadpath):
+        try:
             urlstr = "http://www2.guidestar.org/PartnerReport.aspx?Partner=networkforgood&ein={}".format(ein,outpath,ein)
             r=session.get(urlstr)
             localfile = open(downloadpath,'wb')
@@ -234,9 +241,9 @@ def GuideStarMain(ein=None,outpath="/Users/amorgan/Documents/Insight/Guidestar")
             print "Wrote id {}: {}".format(ein,outpath)
             timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
             time.sleep(timetopause)
-    except:
-        errtext='Couldnt scrape dfid:{}'.format(ein)
-        qErr.qErr(errtitle="A scraping error has occured!",errtext=errtext)
+        except:
+            errtext='Couldnt scrape dfid:{}'.format(ein)
+            qErr.qErr(errtitle="A scraping error has occured!",errtext=errtext)
     
     
 def CharityNavigatorIRS(ein=None,uid=None):
