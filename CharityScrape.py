@@ -230,8 +230,9 @@ def GuideStarMain(ein=None,outpath="/Users/amorgan/Documents/Insight/Guidestar",
         r=session.get('http://www2.guidestar.org/')
     downloadpath = "{}/{}.html".format(outpath,ein)
     checkpath = "{}/CNavigator/{}.html".format(outpath,ein)
+    checkpath2 = "{}/ein{}/{}.html".format(outpath,ein[0],ein)
     # check if already downloaded
-    if not os.path.exists(checkpath) and not os.path.exists(downloadpath):
+    if not os.path.exists(checkpath) and not os.path.exists(downloadpath) and not os.path.exists(checkpath2):
         try:
             urlstr = "http://www2.guidestar.org/PartnerReport.aspx?Partner=networkforgood&ein={}".format(ein,outpath,ein)
             r=session.get(urlstr)
