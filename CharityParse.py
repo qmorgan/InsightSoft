@@ -571,3 +571,88 @@ def _CNGetList():
     CNdf = pd.DataFrame({'CNname':orgnamelist,'CNid':orgidlist})
     return CNdf
 
+def _ParseGSDescription(html):
+    assert html.split('.')[-1].lower()=='html'
+    # print "opening", html
+    openedfile=open(html)
+    readfile = openedfile.read()
+    mission="Not found."
+    if "<h3>Mission</h3></div><p>" in readfile:
+        mission=readfile.split('<h3>Mission</h3></div><p>')[-1].split('</p></div>')[0]
+    mission=mission.replace("'","&#39;")
+    return mission
+    
+def _insertIntoGS(cursor,ein,description):
+
+    pass
+    # don't forget to commit!
+    # conn.commit()
+
+def _GSPopulateTable(filelist=[],drop=False):
+    import pymysql
+    import os
+    if not os.environ.has_key("MYSQL_PASS"):
+        print "You need to set the environment variable  to"
+        print "point to your mysql password"
+        return
+    else:
+        passwd = os.environ.get("MYSQL_PASS")
+    
+    conn = pymysql.connect(host='localhost',user='root',passwd=passwd, db='cnavigator')
+    cursor = conn.cursor()
+    
+   
+    if drop:
+        cursor.execute("DROP TABLE IF EXISTS missions")
+        #make schema
+        sql_cmd="""
+        CREATE TABLE missions (
+            description_ID              INT AUTO_INCREMENT,
+            EIN                          BIGINT  UNIQUE,
+            description                 VARCHAR(32767)   ,  
+            PRIMARY KEY(description_ID)
+            )
+        """
+        print "Creating table"
+        cursor.execute(sql_cmd)
+        conn.commit()
+        conn.close()
+        return
+    
+
+             
+    niter = len(filelist)/100
+    
+    n=0 
+    
+    while n < niter:
+        insertcmd="""INSERT IGNORE INTO missions (EIN,description)
+            VALUES"""
+            
+        filelist2=filelist[n*100:(n+1)*100]
+        print "doing", n*100, ' to ', (n+1)*100
+        for filename in filelist2:
+            # print filename
+            mission = _ParseGSDescription(filename)
+            ein = int(filename.split('/')[-1].replace('-','').replace('.html',''))
+        
+            insertcmd+=""" ({ein},'{description}'),
+            """.format(ein=ein,description=mission)
+        
+        # cursor = _insertIntoGS(cursor,ein,mission)
+        insertcmd=insertcmd.rstrip().rstrip(',')
+        # insertcmd+="ON DUPLICATE KEY UPDATE description='{description}'"
+        print "executing"
+        cursor.execute(insertcmd)
+        conn.commit()
+        n += 1
+        print "Finished {}/{}".format(n*100,len(filelist))
+    
+
+    print "done"
+    
+    # do populations
+    
+
+    
+    conn.close()
