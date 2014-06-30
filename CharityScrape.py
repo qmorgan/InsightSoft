@@ -199,7 +199,7 @@ def CharityNavigatorMain(base='',orgid=None,uid=None):
     qScrape.downloadFile(downloadpath,urlstring)
 
 
-def GuideStarLoop(idrange=[0,3],filename="/Users/amorgan/Documents/Insight/Guidestar/cnavigator6-21-14_ein_guidestarlinks.csv"):
+def GuideStarLoop(idrange=[0,3],filename="/Users/amorgan/Documents/Insight/Guidestar/cnavigator6-27-14_ein_guidestarlinks.csv"):
     # pause=0.25
     # timetopause = np.random.rand() + pause # add a randomized sleep time from 0 to 1 sec
     # time.sleep(timetopause)
