@@ -582,6 +582,61 @@ def _ParseGSDescription(html):
     mission=mission.replace("'","&#39;")
     return mission
     
+
+def _ParseGSNTEE(html):
+    # In [126]: soup = BeautifulSoup(file('/Users/amorgan/Desktop/99-0288410.html'))
+    # 
+    # In [127]: soup.findAll('ul')[0].text.split(')')
+    # Out[127]: [u'F32 (Community Mental Health Center', u'']
+    pass
+
+def _ParseGSTables(html):
+    assert html.split('.')[-1].lower()=='html' # quick & dumb type checking
+    # openedfile=open(html)
+    # readfile = openedfile.read()
+    
+    # all years appear to be in the HTML! Just hidden! So much data.
+    
+    # skiprows since the first one contains dates, and then pandas tries to read all rows as dates
+    try: 
+        liabilities = pd.read_html(html,match="Total Liabilities:",skiprows=[0])
+        # grab the latest year; should be the first instance of the table
+        liabilities = liabilities[0].set_index(0)
+    except ValueError:
+        liabilities = None
+    try:
+        assets = pd.read_html(html,match="Total Assets:",skiprows=[0])
+        assets = assets[0].set_index(0)
+    except ValueError:
+        assets = None
+    try:
+        revenue = pd.read_html(html,match="Total Revenue:")
+        revenue = revenue[0].set_index(0)
+    except ValueError:
+        revenue = None
+    try:
+        #                                1
+        # 0
+        # Program Services     $12,142,393
+        # Administration          $255,736
+        # Fundraising                   $0
+        # Total Expenditures:  $12,398,129
+        expenses = pd.read_html(html,match="Administration")
+        expenses = expenses[0].set_index(0)
+        # convert to an integer
+        expenses[1]=expenses[1].str.replace('$','').str.replace(',','').str.replace(')','').str.replace('(','-')
+
+    except ValueError:
+        expenses = None
+    try:
+        netgain = pd.read_html(html,match="Gain/Loss")
+        netgain = netgain[0].set_index(0)
+    except ValueError:
+        netgain = None
+    
+    return expenses
+    
+    
 def _insertIntoGS(cursor,ein,description):
 
     pass
