@@ -597,24 +597,19 @@ def _ParseGSTables(html):
     
     # all years appear to be in the HTML! Just hidden! So much data.
     
-    # skiprows since the first one contains dates, and then pandas tries to read all rows as dates
-    try: 
-        liabilities = pd.read_html(html,match="Total Liabilities:",skiprows=[0])
-        # grab the latest year; should be the first instance of the table
-        liabilities = liabilities[0].set_index(0)
-    except ValueError:
-        liabilities = None
+    
     try:
-        assets = pd.read_html(html,match="Total Assets:",skiprows=[0])
-        assets = assets[0].set_index(0)
-    except ValueError:
-        assets = None
-    try:
+        # Full breakdown of revenue
         revenue = pd.read_html(html,match="Total Revenue:")
+        # grab the latest year; should be the first instance of the table
         revenue = revenue[0].set_index(0)
+        revenue[1] = revenue[1].str.replace('$','').str.replace(',','').str.replace(')','').str.replace('(','-')
+        contributions = revenue.iloc[0] # contributions are the first row
+        
     except ValueError:
         revenue = None
     try:
+        # summary of expenses
         #                                1
         # 0
         # Program Services     $12,142,393
@@ -625,16 +620,51 @@ def _ParseGSTables(html):
         expenses = expenses[0].set_index(0)
         # convert to an integer
         expenses[1]=expenses[1].str.replace('$','').str.replace(',','').str.replace(')','').str.replace('(','-')
-
     except ValueError:
-        expenses = None
+        expenses = None  
+    
+    
     try:
+        # (Revenue - expendatures) 
+        # tracer of AVG_DEFICIT
         netgain = pd.read_html(html,match="Gain/Loss")
         netgain = netgain[0].set_index(0)
+        netgain[1]=netgain[1].str.replace('$','').str.replace(',','').str.replace(')','').str.replace('(','-')
     except ValueError:
         netgain = None
     
-    return expenses
+    ### Balance sheet
+    try:
+        # skiprows since the first one contains dates, and then pandas tries to read all rows as dates
+        
+        # full breakdown of assets
+        assets = pd.read_html(html,match="Total Assets:",skiprows=[0])
+        assets = assets[0].set_index(0)
+        
+         # most recent total assets shoudl be the last row, column index 2
+        total_assets = assets.iloc[-1][2].replace('$','').replace(',','').replace(')','').replace('(','-')
+        
+    except ValueError:
+        assets = None
+        
+    ## don't need liabilities for now
+    # try: 
+    #     # full breakdown of liabilities
+    #     liabilities = pd.read_html(html,match="Total Liabilities:",skiprows=[0])
+    #     liabilities = liabilities[0].set_index(0)
+    # except ValueError:
+    #     liabilities = None
+
+
+    # now lets add them all together.. 
+    columns = ["GSprogramexpenses", "GSadminexpenses", "GSfundexpenses", "GStotalexpenses", "GScontributions", "GSnetassets", "GSdeltafunds"]
+    arr=np.zeros(len(columns),dtype='int')
+    arr[0:4] = expenses[1].astype('int')
+    assert len(contributions.values.astype(int)) == 1
+    arr[4] = contributions.values.astype(int)[0]
+    arr[5] = int(total_assets)
+    arr[6] = netgain[1].values.astype(int)[0]
+    return arr
     
     
 def _insertIntoGS(cursor,ein,description):
@@ -646,14 +676,27 @@ def _insertIntoGS(cursor,ein,description):
 def _GSPopulateTable(filelist=[],drop=False):
     import pymysql
     import os
+    import sys
     if not os.environ.has_key("MYSQL_PASS"):
-        print "You need to set the environment variable  to"
+        print "You need to set the environment variable MYSQL_PASS to"
         print "point to your mysql password"
-        return
-    else:
+        sys.exit(1)
+        
+    elif not os.environ.has_key("RDS_HOST"):
+        print "You need to set the environment variable RDS_HOST to"
+        print "point to your amazon RDS host" 
+        sys.exit(1)
+    else: 
         passwd = os.environ.get("MYSQL_PASS")
+        rdshost=os.environ.get("RDS_HOST")
     
-    conn = pymysql.connect(host='localhost',user='root',passwd=passwd, db='cnavigator')
+    
+    
+    
+    # db_path = 'mysql://qmorgan:'+passwd+'@'+rdshost+'/cnavigator'
+    
+    # conn = pymysql.connect(host='localhost',user='root',passwd=passwd, db='cnavigator')
+    conn = pymysql.connect(host='insight.ckocl9enbo47.us-west-2.rds.amazonaws.com',port=3306,user='qmorgan',passwd=passwd,db='cnavigator')
     cursor = conn.cursor()
     
    
