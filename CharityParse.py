@@ -606,41 +606,77 @@ def _ParseGSTablesFast(html):
     # 'December 31, 2012'
     FYend = rev.split('</td></tr>')[0].split('</')[0].split('\n')[-1].strip()
     
+    contributions=None
+    program_expenses=None
+    admin_expenses=None
+    fundraising_expenses=None
+    total_expenses=None
+    netgainloss=None
+    total_expenses=None
+    
     for split in rev.split('</td></tr>'):
         if "Contributions\r\n" in split:
-            contributions = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
-            print "cont ", contributions
-        if "Program Services" in split and "Expenses" in split:
-            program_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
-            print "pexp ", program_expenses
-        if "Administration" in split:
-            admin_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
-            print 'admin ', admin_expenses
-        if "Fundraising" in split:
-            fundraising_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
-            print 'fund ', fundraising_expenses
-        if "Total Expenditures:" in split:
-            total_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
-            print 'total exp ', total_expenses
-        if "Gain/Loss" in split:
-            netgainloss = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
-            print 'netgain ', netgainloss
-        if "Total Assets:" in split:
-            total_assets = int(split.split('$')[-2].split('</strong>')[0].replace('$','').replace(',','').replace(')','').replace('(','-'))
-            print 'total ', total_assets
+            try:
+                contributions = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            except:
+                contributions = np.nan
+            # print "cont ", contributions
+        elif "Program Services" in split and "Expenses" in split:
+            # print "pexp ", program_expenses
+            # fails on '31-1102784.html'
+            try:
+                program_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            except:
+                program_expenses = np.nan
+        elif "Administration" in split and "$" in split:
+            try:
+                admin_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                # print 'admin ', admin_expenses
+            except:
+                admin_expenses = np.nan
+        elif "Fundraising" in split:
+            try:
+                fundraising_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            except:
+                fundraising_expenses = np.nan
+            # print 'fund ', fundraising_expenses
+        elif "Total Expenditures:" in split:
+            try:
+                total_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+            except:
+                total_expenses= np.nan
+            # print 'total exp ', total_expenses
+        elif "Gain/Loss" in split:
+            try:
+                netgainloss = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+                # print 'netgain ', netgainloss
+            except:
+                # '13-3770472.html' gives NaN
+                netgainlos = np.nan
+        elif "Total Assets:" in split:
+            try:
+                total_assets = int(split.split('$')[-2].split('</strong>')[0].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            except:
+                total_assets = np.nan
+            # print 'total ', total_assets
     
     columns = ["GSprogramexpenses", "GSadminexpenses", "GSfundexpenses", "GStotalexpenses", "GScontributions", "GSnetassets", "GSdeltafunds"]
     arr=np.zeros(len(columns),dtype='int')
     
-    arr[0] = program_expenses
-    arr[1] = admin_expenses
-    arr[2] = fundraising_expenses
-    arr[3] = total_expenses
-    arr[4] = contributions
-    arr[5] = total_assets
-    arr[6] = netgainloss
+    try:
+        arr[0] = program_expenses
+        arr[1] = admin_expenses
+        arr[2] = fundraising_expenses
+        arr[3] = total_expenses
+        arr[4] = contributions
+        arr[5] = total_assets
+        arr[6] = netgainloss
+    except TypeError:
+        return None, None # somekind of malformed file
+    except ValueError:
+        return None, None # ValueError: cannot convert float NaN to integer
     openedfile.close()
-    return arr    
+    return arr, FYend
 
 def _ParseGSTables(html):
     assert html.split('.')[-1].lower()=='html' # quick & dumb type checking
@@ -726,7 +762,95 @@ def _insertIntoGS(cursor,ein,description):
     # don't forget to commit!
     # conn.commit()
 
-def _GSPopulateTable(filelist=[],drop=False):
+def _GSPopulateFinancesTable(filelist=[],drop=False):
+    import pymysql
+    import os
+    import sys
+    if not os.environ.has_key("MYSQL_PASS"):
+        print "You need to set the environment variable MYSQL_PASS to"
+        print "point to your mysql password"
+        sys.exit(1)
+        
+    elif not os.environ.has_key("RDS_HOST"):
+        print "You need to set the environment variable RDS_HOST to"
+        print "point to your amazon RDS host" 
+        sys.exit(1)
+    else: 
+        passwd = os.environ.get("MYSQL_PASS")
+        rdshost=os.environ.get("RDS_HOST")
+    
+    # db_path = 'mysql://qmorgan:'+passwd+'@'+rdshost+'/cnavigator'
+    
+    conn = pymysql.connect(host='localhost',user='root',passwd=passwd, db='cnavigator')
+    # conn = pymysql.connect(host='insight.ckocl9enbo47.us-west-2.rds.amazonaws.com',port=3306,user='qmorgan',passwd=passwd,db='cnavigator')
+    cursor = conn.cursor()
+    
+    if drop:
+        cursor.execute("DROP TABLE IF EXISTS GSfinances")
+        #make schema
+        sql_cmd="""
+        CREATE TABLE GSfinances (
+            GS_ID              INT AUTO_INCREMENT,
+            EIN                          BIGINT  UNIQUE,
+            GSFYend                     VARCHAR(20),
+            GSprogramexpenses           BIGINT,  
+            GSadminexpenses             BIGINT,
+            GSfundexpenses              BIGINT,
+            GStotalexpenses             BIGINT,
+            GScontributions             BIGINT,
+            GSnetassets                 BIGINT,
+            GSdeltafunds                BIGINT,
+            PRIMARY KEY(GS_ID)
+            )
+        """
+        print "Creating table"
+        cursor.execute(sql_cmd)
+        conn.commit()
+        conn.close()
+        return
+    
+
+             
+    niter = len(filelist)/100
+    
+    n=0
+        
+        
+    while n < niter:
+        insertcmd="""INSERT IGNORE INTO GSfinances (EIN,GSFYend,GSprogramexpenses, GSadminexpenses, GSfundexpenses, GStotalexpenses, GScontributions, GSnetassets, GSdeltafunds)
+            VALUES"""
+            
+        filelist2=filelist[n*100:(n+1)*100]
+        print "doing", n*100, ' to ', (n+1)*100
+        for filename in filelist2:
+            # print filename
+            arr,FYend = _ParseGSTablesFast(filename)
+            ein = int(filename.split('/')[-1].replace('-','').replace('.html',''))
+            if arr == None:
+                print "Can't parse ein {}".format(ein)
+                continue
+        
+            insertcmd+=""" ({ein},'{fyend}',{progexp},{adminexp},{fundexp},{totexp},{cont},{netass},{delta}),
+            """.format(ein=ein,fyend=FYend,progexp=arr[0],adminexp=arr[1],fundexp=arr[2],totexp=arr[3],cont=arr[4],netass=arr[5],delta=arr[6])
+        
+        # cursor = _insertIntoGS(cursor,ein,mission)
+        insertcmd=insertcmd.rstrip().rstrip(',')
+        # insertcmd+="ON DUPLICATE KEY UPDATE description='{description}'"
+        print "executing"
+        cursor.execute(insertcmd)
+        conn.commit()
+        n += 1
+        print "Finished {}/{}".format(n*100,len(filelist))
+    
+
+    print "done"
+    
+    # do populations
+    
+
+    
+    conn.close()
+def _GSPopulateMissionsTable(filelist=[],drop=False):
     import pymysql
     import os
     import sys
