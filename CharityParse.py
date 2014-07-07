@@ -590,6 +590,58 @@ def _ParseGSNTEE(html):
     # Out[127]: [u'F32 (Community Mental Health Center', u'']
     pass
 
+def _ParseGSTablesFast(html):
+    '''ParseGSTables is slow as heck due to the read_html method. Here we do a 
+    messy but faster way to get the same information desired
+    '''
+    assert html.split('.')[-1].lower()=='html'
+    # print "opening", html
+    openedfile=open(html)
+    readfile = openedfile.read()
+    # only the most recent are displayed in Guidestar files, even though
+    # other years exist in the file. Split by display:none and grab the first
+    recent=readfile.split('style="display:none">')[0]
+    rev = recent.split("Revenue and Expenses")[-1]
+    
+    # 'December 31, 2012'
+    FYend = rev.split('</td></tr>')[0].split('</')[0].split('\n')[-1].strip()
+    
+    for split in rev.split('</td></tr>'):
+        if "Contributions\r\n" in split:
+            contributions = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            print "cont ", contributions
+        if "Program Services" in split and "Expenses" in split:
+            program_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            print "pexp ", program_expenses
+        if "Administration" in split:
+            admin_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            print 'admin ', admin_expenses
+        if "Fundraising" in split:
+            fundraising_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            print 'fund ', fundraising_expenses
+        if "Total Expenditures:" in split:
+            total_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+            print 'total exp ', total_expenses
+        if "Gain/Loss" in split:
+            netgainloss = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+            print 'netgain ', netgainloss
+        if "Total Assets:" in split:
+            total_assets = int(split.split('$')[-2].split('</strong>')[0].replace('$','').replace(',','').replace(')','').replace('(','-'))
+            print 'total ', total_assets
+    
+    columns = ["GSprogramexpenses", "GSadminexpenses", "GSfundexpenses", "GStotalexpenses", "GScontributions", "GSnetassets", "GSdeltafunds"]
+    arr=np.zeros(len(columns),dtype='int')
+    
+    arr[0] = program_expenses
+    arr[1] = admin_expenses
+    arr[2] = fundraising_expenses
+    arr[3] = total_expenses
+    arr[4] = contributions
+    arr[5] = total_assets
+    arr[6] = netgainloss
+    openedfile.close()
+    return arr    
+
 def _ParseGSTables(html):
     assert html.split('.')[-1].lower()=='html' # quick & dumb type checking
     # openedfile=open(html)
@@ -646,6 +698,7 @@ def _ParseGSTables(html):
         
     except ValueError:
         assets = None
+        total_assets = None
         
     ## don't need liabilities for now
     # try: 
