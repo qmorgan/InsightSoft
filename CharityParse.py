@@ -613,11 +613,12 @@ def _ParseGSTablesFast(html):
     total_expenses=None
     netgainloss=None
     total_expenses=None
+    gvmt_grants=None
     
     for split in rev.split('</td></tr>'):
         if "Contributions\r\n" in split:
             try:
-                contributions = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                contributions = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')',''))
             except:
                 contributions = np.nan
             # print "cont ", contributions
@@ -625,44 +626,48 @@ def _ParseGSTablesFast(html):
             # print "pexp ", program_expenses
             # fails on '31-1102784.html'
             try:
-                program_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                program_expenses = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')',''))
             except:
                 program_expenses = np.nan
         elif "Administration" in split and "$" in split:
             try:
-                admin_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                admin_expenses = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')',''))
                 # print 'admin ', admin_expenses
             except:
                 admin_expenses = np.nan
         elif "Fundraising" in split:
             try:
-                fundraising_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                fundraising_expenses = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')',''))
             except:
                 fundraising_expenses = np.nan
             # print 'fund ', fundraising_expenses
         elif "Total Expenditures:" in split:
             try:
-                total_expenses = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+                total_expenses = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')','').replace('</b>',''))
             except:
                 total_expenses= np.nan
             # print 'total exp ', total_expenses
         elif "Gain/Loss" in split:
             try:
-                netgainloss = int(split.split('$')[-1].replace('$','').replace(',','').replace(')','').replace('(','-').replace('</b>',''))
+                netgainloss = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')','').replace('</b>',''))
                 # print 'netgain ', netgainloss
             except:
                 # '13-3770472.html' gives NaN
-                netgainlos = np.nan
+                netgainloss = np.nan
         elif "Total Assets:" in split:
             try:
-                total_assets = int(split.split('$')[-2].split('</strong>')[0].replace('$','').replace(',','').replace(')','').replace('(','-'))
+                total_assets = int(split.replace('($','$-').split('$')[-2].split('</strong>')[0].replace('$','').replace(',','').replace(')',''))
             except:
                 total_assets = np.nan
             # print 'total ', total_assets
+        elif "Government Grants" in split:
+            try:
+                gvmt_grants = int(split.replace('($','$-').split('$')[-1].replace('$','').replace(',','').replace(')',''))
+            except:
+                gvmt_grants = np.nan
     
-    columns = ["GSprogramexpenses", "GSadminexpenses", "GSfundexpenses", "GStotalexpenses", "GScontributions", "GSnetassets", "GSdeltafunds"]
+    columns = ["GSprogramexpenses", "GSadminexpenses", "GSfundexpenses", "GStotalexpenses", "GScontributions", "GSnetassets", "GSdeltafunds","GSgovgrants"]
     arr=np.zeros(len(columns),dtype='int')
-    
     try:
         arr[0] = program_expenses
         arr[1] = admin_expenses
@@ -671,6 +676,7 @@ def _ParseGSTablesFast(html):
         arr[4] = contributions
         arr[5] = total_assets
         arr[6] = netgainloss
+        arr[7] = gvmt_grants
     except TypeError:
         return None, None # somekind of malformed file
     except ValueError:
@@ -800,6 +806,7 @@ def _GSPopulateFinancesTable(filelist=[],drop=False):
             GScontributions             BIGINT,
             GSnetassets                 BIGINT,
             GSdeltafunds                BIGINT,
+            GSgovgrants                 BIGINT,
             PRIMARY KEY(GS_ID)
             )
         """
@@ -817,7 +824,7 @@ def _GSPopulateFinancesTable(filelist=[],drop=False):
         
         
     while n < niter:
-        insertcmd="""INSERT IGNORE INTO GSfinances (EIN,GSFYend,GSprogramexpenses, GSadminexpenses, GSfundexpenses, GStotalexpenses, GScontributions, GSnetassets, GSdeltafunds)
+        insertcmd="""INSERT IGNORE INTO GSfinances (EIN,GSFYend,GSprogramexpenses, GSadminexpenses, GSfundexpenses, GStotalexpenses, GScontributions, GSnetassets, GSdeltafunds,GSgovgrants)
             VALUES"""
             
         filelist2=filelist[n*100:(n+1)*100]
@@ -830,8 +837,8 @@ def _GSPopulateFinancesTable(filelist=[],drop=False):
                 print "Can't parse ein {}".format(ein)
                 continue
         
-            insertcmd+=""" ({ein},'{fyend}',{progexp},{adminexp},{fundexp},{totexp},{cont},{netass},{delta}),
-            """.format(ein=ein,fyend=FYend,progexp=arr[0],adminexp=arr[1],fundexp=arr[2],totexp=arr[3],cont=arr[4],netass=arr[5],delta=arr[6])
+            insertcmd+=""" ({ein},'{fyend}',{progexp},{adminexp},{fundexp},{totexp},{cont},{netass},{delta},{gov}),
+            """.format(ein=ein,fyend=FYend,progexp=arr[0],adminexp=arr[1],fundexp=arr[2],totexp=arr[3],cont=arr[4],netass=arr[5],delta=arr[6],gov=arr[7])
         
         # cursor = _insertIntoGS(cursor,ein,mission)
         insertcmd=insertcmd.rstrip().rstrip(',')
